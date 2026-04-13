@@ -1,0 +1,48 @@
+# Insitu Dashboard · Edding & Maped Colombia
+
+App para consolidar y analizar formularios de visita de mercaderistas desde Insitu Sales.
+
+## Cómo desplegar en Render (sin código)
+
+### Paso 1: Crear cuenta en GitHub
+1. Ve a [github.com](https://github.com) y haz clic en **Sign up**
+2. Ingresa tu email, crea una contraseña y elige un nombre de usuario
+3. Verifica tu email
+
+### Paso 2: Subir el código a GitHub
+1. Inicia sesión en GitHub
+2. Haz clic en el botón **+** (arriba a la derecha) → **New repository**
+3. Nombre: `insitu-dashboard`
+4. Deja todo lo demás por defecto → clic en **Create repository**
+5. En la página siguiente, haz clic en **uploading an existing file**
+6. Arrastra TODOS los archivos de esta carpeta (app.py, requirements.txt, Procfile, render.yaml y la carpeta static/)
+7. Clic en **Commit changes**
+
+### Paso 3: Desplegar en Render
+1. Ve a [render.com](https://render.com) y haz clic en **Get Started**
+2. Selecciona **Continue with GitHub** e ingresa con tu cuenta
+3. Clic en **New +** → **Web Service**
+4. Selecciona el repositorio `insitu-dashboard`
+5. Render detecta automáticamente la configuración. Verifica:
+   - **Build Command:** `pip install -r requirements.txt`
+   - **Start Command:** `gunicorn app:app`
+6. En **Environment**, agrega esta variable:
+   - Key: `PYTHON_VERSION` | Value: `3.11.0`
+7. Clic en **Create Web Service**
+
+Render tarda ~3 minutos en desplegar. Al terminar te da una URL como:
+`https://insitu-dashboard.onrender.com`
+
+¡Comparte esa URL con tu equipo!
+
+### Instalar poppler en Render
+En el campo **Build Command** usa:
+```
+apt-get install -y poppler-utils && pip install -r requirements.txt
+```
+
+## Uso
+1. Abre la URL en cualquier navegador (celular o computador)
+2. Sube los PDFs de Insitu Sales (puedes subir varios a la vez)
+3. Haz clic en "Procesar formularios"
+4. Ve el dashboard consolidado y exporta el CSV
