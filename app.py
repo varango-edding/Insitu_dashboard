@@ -37,7 +37,7 @@ def parse_form(path, filename):
     m = re.search(r'Name:\s*([^\n]+)', text)
     v['mercaderista'] = m.group(1).strip().replace(' Email:', '') if m else ''
 
-    m = re.search(r'CUSTOMER\s*\nName:\s*(.+?)(?:\nCode:)', text, re.DOTALL)
+    m = re.search(r'CUSTOMER[\s\S]{0,40}?Name:\s*(.+?)(?=\nCode:|\nContact:|\nNit:)', text, re.DOTALL)
     v['punto_de_venta'] = ' '.join(m.group(1).split()) if m else ''
 
     m = re.search(r'City:\s*(.+)', text)
