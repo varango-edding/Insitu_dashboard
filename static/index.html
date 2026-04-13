@@ -1,4 +1,4 @@
-!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -430,7 +430,7 @@ function renderMercCards(d) {
   }).join('') || '<div style="padding:2rem;text-align:center;color:var(--text-3);font-size:13px;">Sin resultados para el filtro seleccionado</div>';
 }
 
-
+function switchTab(name) {
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['tabla','mercaderista'][i]===name));
   document.querySelectorAll('.tab-pane').forEach(t=>t.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
