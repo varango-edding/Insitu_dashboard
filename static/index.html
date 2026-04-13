@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -125,6 +125,7 @@ tr:hover td { background: #fafaf8; }
   header { padding: 0 1rem; }
 }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -164,14 +165,28 @@ tr:hover td { background: #fafaf8; }
     <div class="top-bar">
       <div class="top-bar-left" id="lote-info"></div>
       <div style="display:flex;gap:8px">
-        <button class="btn" onclick="exportCSV()">Exportar CSV</button>
+        <button class="btn" onclick="exportExcel()">Exportar Excel</button>
         <button class="btn" onclick="resetApp()">Nuevo lote</button>
       </div>
     </div>
 
-    <div class="metrics" id="metrics"></div>
+    <div class="metrics">
+      <div class="metric"><div class="metric-label">Total visitas</div><div class="metric-value" id="m-visitas">—</div></div>
+      <div class="metric"><div class="metric-label">Mercaderistas</div><div class="metric-value" id="m-mercs">—</div></div>
+      <div class="metric"><div class="metric-label">Clientes cerrados</div><div class="metric-value" id="m-cerrados">—</div></div>
+      <div class="metric"><div class="metric-label">Alertas inventario</div><div class="metric-value" id="m-alertas">—</div></div>
+    </div>
     <div class="alerts" id="alerts"></div>
     <div id="errors-section"></div>
+
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:1rem;flex-wrap:wrap;">
+      <span style="font-size:13px;color:var(--text-2);white-space:nowrap;">Filtrar por fecha:</span>
+      <input type="date" id="fecha-desde" onchange="applyFilter()" style="font-family:inherit;font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+      <span style="font-size:13px;color:var(--text-3);">—</span>
+      <input type="date" id="fecha-hasta" onchange="applyFilter()" style="font-family:inherit;font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);">
+      <button class="btn" onclick="clearFilter()" id="clear-filter-btn" style="display:none">Limpiar filtro</button>
+      <span id="filter-count" style="font-size:12px;color:var(--text-3);"></span>
+    </div>
 
     <div class="panel">
       <div class="panel-header">
@@ -280,20 +295,18 @@ function alertSum(v) {
 }
 
 function renderResults(errors) {
-  const total = DATA.length;
-  const mercs = new Set(DATA.map(v=>v.mercaderista)).size;
-  const cerrados = DATA.filter(v=>v.cliente_cerrado).length;
-  const alertas = DATA.filter(v=>v.alerta_inventario||v.lenta_rotacion).length;
+  FILTERED = [...DATA];
   const fechas = [...new Set(DATA.map(v=>v.fecha).filter(Boolean))].sort();
-  const fechaStr = fechas.length===1 ? fechas[0] : fechas.length>1 ? `${fechas[0]} – ${fechas[fechas.length-1]}` : '';
+  const fechaStr = fechas.length===1 ? fechas[0] : fechas.length>1 ? `${fechas[0]} - ${fechas[fechas.length-1]}` : '';
+  document.getElementById('lote-info').textContent = `${DATA.length} formularios procesados${fechaStr?' · '+fechaStr:''}`;
 
-  document.getElementById('lote-info').textContent = `${total} formularios procesados${fechaStr?' · '+fechaStr:''}`;
-  document.getElementById('metrics').innerHTML = `
-    <div class="metric"><div class="metric-label">Total visitas</div><div class="metric-value">${total}</div></div>
-    <div class="metric"><div class="metric-label">Mercaderistas</div><div class="metric-value">${mercs}</div></div>
-    <div class="metric"><div class="metric-label">Clientes cerrados</div><div class="metric-value ${cerrados>0?'red':''}">${cerrados}</div></div>
-    <div class="metric"><div class="metric-label">Alertas inventario</div><div class="metric-value ${alertas>0?'amber':''}">${alertas}</div></div>
-  `;
+  // Set default date filter range to match data
+  if (fechas.length > 0) {
+    document.getElementById('fecha-desde').value = fechas[0];
+    document.getElementById('fecha-hasta').value = fechas[fechas.length-1];
+  }
+
+  renderMetrics(FILTERED);
 
   const alertVisits = DATA.filter(v=>v.cliente_cerrado||v.alerta_inventario||v.lenta_rotacion);
   document.getElementById('alerts').innerHTML = alertVisits.length
@@ -301,16 +314,62 @@ function renderResults(errors) {
         let msgs=[];
         if(v.cliente_cerrado) msgs.push('Cliente cerrado');
         if(v.alerta_inventario) msgs.push(`Inventario: "${v.alerta_inventario}"`);
-        if(v.lenta_rotacion) msgs.push(`Lenta rotación: "${v.lenta_rotacion}"`);
-        return `<div class="alert-item"><strong>${v.mercaderista}</strong> — ${v.punto_de_venta.slice(0,50)} · ${msgs.join(' · ')}</div>`;
+        if(v.lenta_rotacion) msgs.push(`Lenta rotacion: "${v.lenta_rotacion}"`);
+        return `<div class="alert-item"><strong>${v.mercaderista}</strong> - ${v.punto_de_venta.slice(0,50)} · ${msgs.join(' · ')}</div>`;
       }).join('') : '';
 
   if (errors.length) {
     document.getElementById('errors-section').innerHTML = errors.map(e =>
-      `<div class="error-item">⚠ ${e.archivo}: ${e.error}</div>`).join('');
+      `<div class="error-item">aviso: ${e.archivo}: ${e.error}</div>`).join('');
   }
 
-  document.getElementById('tbody').innerHTML = DATA.map(v=>`<tr>
+  renderTable(FILTERED);
+  renderMercCards(FILTERED);
+}
+
+let FILTERED = [];
+
+function applyFilter() {
+  const desde = document.getElementById('fecha-desde').value;
+  const hasta = document.getElementById('fecha-hasta').value;
+  if (!desde && !hasta) {
+    FILTERED = [...DATA];
+  } else {
+    FILTERED = DATA.filter(v => {
+      if (!v.fecha) return false;
+      if (desde && v.fecha < desde) return false;
+      if (hasta && v.fecha > hasta) return false;
+      return true;
+    });
+  }
+  const hasFilter = desde || hasta;
+  document.getElementById('clear-filter-btn').style.display = hasFilter ? 'inline-flex' : 'none';
+  document.getElementById('filter-count').textContent = hasFilter ? `${FILTERED.length} de ${DATA.length} visitas` : '';
+  renderTable(FILTERED);
+  renderMercCards(FILTERED);
+  renderMetrics(FILTERED);
+}
+
+function clearFilter() {
+  document.getElementById('fecha-desde').value = '';
+  document.getElementById('fecha-hasta').value = '';
+  applyFilter();
+}
+
+function renderMetrics(d) {
+  const cerrados = d.filter(v=>v.cliente_cerrado).length;
+  const alertas = d.filter(v=>v.alerta_inventario||v.lenta_rotacion).length;
+  const mercs = new Set(d.map(v=>v.mercaderista)).size;
+  document.getElementById('m-visitas').textContent = d.length;
+  document.getElementById('m-mercs').textContent = mercs;
+  document.getElementById('m-cerrados').textContent = cerrados;
+  document.getElementById('m-alertas').textContent = alertas;
+  document.getElementById('m-cerrados').className = 'metric-value' + (cerrados>0?' red':'');
+  document.getElementById('m-alertas').className = 'metric-value' + (alertas>0?' amber':'');
+}
+
+function renderTable(d) {
+  document.getElementById('tbody').innerHTML = d.map(v=>`<tr>
     <td style="white-space:nowrap;font-weight:500">${v.mercaderista}</td>
     <td style="font-size:12px;max-width:160px">${v.punto_de_venta}</td>
     <td>${v.ciudad}</td>
@@ -322,10 +381,11 @@ function renderResults(errors) {
     <td>${eb(v.tiene_pop)}</td>
     <td>${alertCell(v)}</td>
   </tr>`).join('');
+}
 
+function renderMercCards(d) {
   const byMerc = {};
-  DATA.forEach(v=>{ const k=v.mercaderista||'Desconocido'; if(!byMerc[k]) byMerc[k]=[]; byMerc[k].push(v); });
-
+  d.forEach(v=>{ const k=v.mercaderista||'Desconocido'; if(!byMerc[k]) byMerc[k]=[]; byMerc[k].push(v); });
   document.getElementById('merc-cards').innerHTML = Object.entries(byMerc).map(([name,visits])=>{
     const initials = name.split(/[\s,]+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
     const cerradosM = visits.filter(v=>v.cliente_cerrado).length;
@@ -348,15 +408,15 @@ function renderResults(errors) {
         <div class="stat">Sin exhib. Edding: <strong>${sinEdding}</strong></div>
         <div class="stat">Sin exhib. Maped: <strong>${sinMaped}</strong></div>
         <div class="stat">Sin POP: <strong>${sinPop}</strong></div>
-        ${proximas.length?`<div class="stat">Próxima visita: <strong>${proximas[0]}</strong></div>`:''}
+        ${proximas.length?`<div class="stat">Proxima visita: <strong>${proximas[0]}</strong></div>`:''}
       </div>
       <div style="overflow-x:auto">
       <table class="inner-table">
-        <thead><tr><th>Punto de venta</th><th>Ciudad</th><th>Tipo</th><th>Fecha</th><th>Labor/Acción</th><th>Próx. visita</th><th>Edding</th><th>Maped</th><th>POP</th><th>Alerta</th></tr></thead>
+        <thead><tr><th>Punto de venta</th><th>Ciudad</th><th>Tipo</th><th>Fecha</th><th>Labor/Accion</th><th>Prox. visita</th><th>Edding</th><th>Maped</th><th>POP</th><th>Alerta</th></tr></thead>
         <tbody>${visits.map(v=>`<tr>
-          <td>${v.punto_de_venta.slice(0,30)}${v.punto_de_venta.length>30?'…':''}</td>
+          <td>${v.punto_de_venta.slice(0,30)}${v.punto_de_venta.length>30?'...':''}</td>
           <td>${v.ciudad}</td>
-          <td><span class="badge ${v.tipo==='MERCADEO'?'b-info':'b-gray'}" style="font-size:10px">${v.tipo}</span></td>
+          <td><span class="badge ${v.tipo==='MERCADEO'?'b-info':'b-gray'}" style="font-size:10px">${v.tipo||'—'}</span></td>
           <td style="white-space:nowrap">${v.fecha}</td>
           <td style="max-width:120px;font-size:11px">${v.labor_realizada||v.paso_a_seguir||'—'}</td>
           <td style="white-space:nowrap">${v.proxima_visita||'—'}</td>
@@ -367,31 +427,34 @@ function renderResults(errors) {
         </tr>`).join('')}</tbody>
       </table></div>
     </div>`;
-  }).join('');
+  }).join('') || '<div style="padding:2rem;text-align:center;color:var(--text-3);font-size:13px;">Sin resultados para el filtro seleccionado</div>';
 }
 
-function switchTab(name) {
+
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['tabla','mercaderista'][i]===name));
   document.querySelectorAll('.tab-pane').forEach(t=>t.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
 }
 
-function exportCSV() {
-  const h = ['Mercaderista','Punto de venta','Ciudad','Tipo','Fecha','Labor/Acción','Próxima visita','Exhib. Edding','Exhib. Maped','POP','Cliente cerrado','Alerta inventario','Lenta rotación','Archivo'];
-  const rows = DATA.map(v=>[
-    v.mercaderista,v.punto_de_venta,v.ciudad,v.tipo,v.fecha,
-    v.labor_realizada||v.paso_a_seguir,v.proxima_visita,
-    v.tiene_exhibicion_edding===null?'—':v.tiene_exhibicion_edding?'Sí':'No',
-    v.tiene_exhibicion_maped===null?'—':v.tiene_exhibicion_maped?'Sí':'No',
-    v.tiene_pop===null?'—':v.tiene_pop?'Sí':'No',
-    v.cliente_cerrado?'Sí':'No',v.alerta_inventario||'',v.lenta_rotacion||'',v._filename
-  ].map(c=>`"${String(c||'').replace(/"/g,'""')}"`));
-  const csv = [h.map(x=>`"${x}"`).join(','),...rows.map(r=>r.join(','))].join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));
-  a.download = `visitas_${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
+function exportExcel() {
+  const d = (FILTERED && FILTERED.length) ? FILTERED : DATA;
+  const headers = ['Mercaderista','Punto de venta','Ciudad','Tipo','Fecha','Labor/Accion','Proxima visita','Exhib. Edding','Exhib. Maped','POP','Cliente cerrado','Alerta inventario','Lenta rotacion','Archivo'];
+  const rows = d.map(v=>[
+    v.mercaderista, v.punto_de_venta, v.ciudad, v.tipo, v.fecha,
+    v.labor_realizada||v.paso_a_seguir, v.proxima_visita,
+    v.tiene_exhibicion_edding===null?'—':v.tiene_exhibicion_edding?'Si':'No',
+    v.tiene_exhibicion_maped===null?'—':v.tiene_exhibicion_maped?'Si':'No',
+    v.tiene_pop===null?'—':v.tiene_pop?'Si':'No',
+    v.cliente_cerrado?'Si':'No', v.alerta_inventario||'', v.lenta_rotacion||'', v._filename
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  const colWidths = [22,35,18,16,12,35,14,10,10,8,14,30,30,25];
+  ws['!cols'] = colWidths.map(w => ({wch: w}));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Visitas');
+  XLSX.writeFile(wb, `visitas_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
+
 
 function resetApp() {
   uploadedFiles=[]; DATA=[];
